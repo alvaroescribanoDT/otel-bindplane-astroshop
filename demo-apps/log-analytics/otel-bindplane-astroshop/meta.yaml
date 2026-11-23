@@ -1,0 +1,39 @@
+title: "OTel Astronomy Shop with Bindplane: PII masking, log reduction and S3 archive into Dynatrace"
+description: >
+  Deploys the OpenTelemetry Astronomy Shop on one EC2 host with a Bindplane-managed collector that masks PII,
+  samples and deduplicates logs, fixes severities, adds host context and archives redacted logs to S3 before
+  sending everything to Dynatrace. One settings file and one script (lab.sh) build it in your own AWS account,
+  Bindplane project and Dynatrace tenant, including OpenPipeline routes and three demo dashboards.
+purpose: >
+  When a customer runs OpenTelemetry collectors or Bindplane and asks how to keep credit card numbers and emails out
+  of their observability data, cut log volume and cost before ingest, or send the same clean data to Dynatrace and
+  an S3 archive, this demo shows it end to end on a realistic microservices shop. Card numbers and emails arrive
+  hashed and CVVs masked, proxy access logs drop by about half, duplicate container logs disappear, and OTel host
+  monitoring, collector health and feature-flag incidents are visible in Dynatrace, all without changing the
+  application.
+author: "Alvaro Escribano"
+contact: "alvaro.escribano@dynatrace.com"
+asset_type: demo-app
+use_case: log-analytics
+deployment:
+  - SaaS
+tags:
+  - Bindplane
+  - OTel
+  - Logs
+  - OpenPipeline
+  - AWS
+  - IaC
+  - Infrastructure
+  - Security
+setup_instructions: >
+  1. One-time: install terraform, aws CLI (+ Session Manager plugin), bindplane CLI, python3 with PyYAML; create a
+  Bindplane project (API key + collector secret key), a Dynatrace access token (openTelemetryTrace.ingest,
+  metrics.ingest, logs.ingest) and install the OpenTelemetry Host Monitoring extension from Hub.
+  2. cp lab.env.example lab.env and fill it in.
+  3. ./lab.sh doctor, then ./lab.sh up (about 15 minutes).
+  4. Before the demo: ./lab.sh pii on (optional synthetic PII logs), then ./lab.sh check; follow DEMO.md.
+  ./lab.sh pii off afterwards.
+  5. ./lab.sh down to remove the AWS resources (about USD 5 per day while running).
+tenant_url: ""
+related_assets:

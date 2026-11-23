@@ -1,0 +1,149 @@
+# Generated from the lab's live Bindplane export. Double-brace placeholders are filled by scripts/render.py from lab.env.
+# Only applied when ENABLE_EKS=true.
+---
+apiVersion: bindplane.observiq.com/v2
+kind: Configuration
+metadata:
+  name: otel-eks-logs
+  description: 'EKS: Kubernetes container logs via the Bindplane node agent (DaemonSet), to Dynatrace'
+  labels:
+    agent-type: observiq-otel-collector
+    platform: kubernetes-daemonset
+spec:
+  contentType: ''
+  measurementInterval: ''
+  topologyInterval: ''
+  disableLegacyEnvVarNormalization: false
+  sources:
+  - id: s-k8s-logs
+    displayName: Kubernetes container logs ({{EKS_CLUSTER_NAME}})
+    type: k8s_container_v2
+    parameters:
+    - name: cluster_name
+      value: {{EKS_CLUSTER_NAME}}
+    - name: file_path
+      value:
+      - /var/log/containers/*.log
+    - name: exclude_file_path
+      value:
+      - /var/log/containers/observiq-*-collector-*
+      - /var/log/containers/bindplane-*-agent-*
+      - /var/log/containers/otel-collector-agent-*
+    - name: start_at
+      value: end
+    - name: parsing
+      value: full
+    - name: max_log_size
+      value: 1MiB
+    - name: format
+      value: auto
+    - name: recombine_logs
+      value: []
+    - name: retry_on_failure_enabled
+      value: false
+    - name: retry_on_failure_initial_interval
+      value: 1
+    - name: retry_on_failure_max_interval
+      value: 30
+    - name: retry_on_failure_max_elapsed_time
+      value: 300
+    processors:
+    - id: p-kafka-sample
+      name: lab-sample-kafka-logs
+    - id: p-eks-sev
+      name: lab-severity-from-message
+    - id: p-eks-svc
+      name: lab-eks-service-name
+    - id: p-eks-tag
+      name: lab-eks-tag-fields
+    routes:
+      logs:
+      - id: '0'
+        components:
+        - destinations/d-dt
+  - id: s-selfmon
+    displayName: Collector self-monitoring
+    type: bindplane-agent_v2
+    parameters:
+    - name: telemetry_types
+      value:
+      - Metrics
+    - name: metrics_port
+      value: 8888
+    - name: trim_metric_suffixes
+      value: true
+    - name: collection_interval
+      value: 60
+    - name: log_path
+      value: log/collector.log
+    - name: updater_log_path
+      value: log/updater.log
+    - name: enable_stderr_log
+      value: true
+    - name: stderr_log_path_windows
+      value: log/observiq_collector.err
+    - name: stderr_log_path_macos
+      value: /var/log/observiq_collector.err
+    - name: multiline_parsing
+      value: none
+    - name: multiline_line_start_pattern
+      value: ''
+    - name: multiline_line_end_pattern
+      value: ''
+    - name: include_file_name_attribute
+      value: true
+    - name: include_file_path_attribute
+      value: false
+    - name: include_file_name_resolved_attribute
+      value: false
+    - name: include_file_path_resolved_attribute
+      value: false
+    - name: encoding
+      value: utf-8
+    - name: max_log_size
+      value: 1MiB
+    - name: enable_offset_storage
+      value: true
+    - name: offset_storage_dir
+      value: storage
+    - name: start_at
+      value: end
+    - name: metric_filtering
+      value:
+      - http_server_request_duration
+      - http_server_request_body_size
+      - http_server_response_body_size
+      - http_client_request_duration
+      - http_client_request_body_size
+      - rpc_server_call_duration
+      - rpc_client_call_duration
+      - otelcol_receiver_produced_size
+      - otelcol_processor_consumed_size
+      - otelcol_processor_produced_size
+      - otelcol_exporter_consumed_size
+      - otelcol_connector_consumed_size
+      - otelcol_connector_produced_size
+      - up
+      - scrape_duration_seconds
+      - scrape_samples_post_metric_relabeling
+      - scrape_samples_scraped
+      - scrape_series_added
+      - promhttp_metric_handler_errors_total
+    processors:
+    - id: s-selfmon-0
+      name: lab-collector-identity-metrics
+    - id: s-selfmon-1
+      name: lab-eks-tag-fields
+    - id: s-selfmon-2
+      name: lab-cumulative-to-delta
+    routes:
+      metrics:
+      - id: '0'
+        components:
+        - destinations/d-dt
+  destinations:
+  - id: d-dt
+    name: dynatrace
+  selector:
+    matchLabels:
+      configuration: otel-eks-logs

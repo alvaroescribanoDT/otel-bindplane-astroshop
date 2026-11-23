@@ -1,0 +1,26 @@
+# Optional lab layer: synthetic checkout/payment logs with fake PII for the redaction demo (pii-log-generator/gen.py).
+# Always installed, never started by default: the service sits in the compose profile "pii-demo".
+# Turn it on/off from your laptop with ./lab.sh pii on|off (sets COMPOSE_PROFILES=pii-demo in the shop's .env).
+# Host networking so it reaches the Bindplane collector's OTLP port on localhost:4318, like the shop's own services.
+services:
+  pii-log-generator:
+    profiles: ["pii-demo"]
+    image: python:3.12-slim
+    container_name: pii-log-generator
+    network_mode: host
+    command: ["python", "-u", "/app/gen.py"]
+    environment:
+      ORDERS_PER_MIN: "4"
+      OTLP_LOGS_URL: http://localhost:4318/v1/logs
+    volumes:
+      - ./pii-log-generator/gen.py:/app/gen.py:ro
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "2"

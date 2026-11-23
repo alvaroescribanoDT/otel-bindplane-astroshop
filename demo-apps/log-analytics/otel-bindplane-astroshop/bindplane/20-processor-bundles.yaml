@@ -1,0 +1,92 @@
+# Generated from the lab's live Bindplane export. Double-brace placeholders are filled by scripts/render.py from lab.env.
+# Bundles reference the processors above, so they are applied after them.
+# Host-Metrics: Dynatrace's host-monitoring recipe. Docker-Logs: the container log chain.
+# Collector-Self-Monitoring: the collector's own telemetry. Lab-tags: tag fields always; the three service-name prefix processors only when ENABLE_SERVICE_PREFIX=true.
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: Lab-tags
+spec:
+  type: processor_bundle
+  processors:
+  - id: p-lab-prefix-service-name-logs
+    name: lab-prefix-service-name-logs
+  - id: p-lab-prefix-service-name-metrics
+    name: lab-prefix-service-name-metrics
+  - id: p-lab-tag-fields
+    name: lab-tag-fields
+  - id: p-lab-prefix-service-name-traces
+    name: lab-prefix-service-name-traces
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: Redact-PII
+spec:
+  type: processor_bundle
+  processors:
+  - id: p-lab-redact-pii
+    name: lab-redact-pii
+  - id: p-lab-redact-cvv
+    name: lab-redact-cvv
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: Host-Metrics
+spec:
+  type: processor_bundle
+  processors:
+  - id: p-lab-host-filter-idle
+    name: lab-host-filter-idle
+  - id: p-lab-host-detection-full
+    name: lab-host-detection-full
+  - id: p-lab-host-transform
+    name: lab-host-transform
+  - id: p-lab-host-filter-delete
+    name: lab-host-filter-delete
+  - id: p-lab-host-cumulative-to-delta
+    name: lab-host-cumulative-to-delta
+  - id: p-lab-tag-fields-infra
+    name: lab-tag-fields-infra
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: Docker-Logs
+spec:
+  type: processor_bundle
+  processors:
+  - id: p-lab-docker-json-logs
+    name: lab-docker-json-logs
+  - id: p-lab-drop-unlabelled-docker-logs
+    name: lab-drop-unlabelled-docker-logs
+  - id: p-lab-sample-kafka-logs
+    name: lab-sample-kafka-logs
+  - id: p-lab-docker-group-by-container
+    name: lab-docker-group-by-container
+  - id: p-lab-docker-service-name
+    name: lab-docker-service-name
+  - id: p-lab-severity-from-message
+    name: lab-severity-from-message
+  - id: p-lab-host-detection-light
+    name: lab-host-detection-light
+  - id: p-lab-tag-fields
+    name: lab-tag-fields
+  - id: p-lab-prefix-service-name-logs
+    name: lab-prefix-service-name-logs
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: Collector-Self-Monitoring
+spec:
+  type: processor_bundle
+  processors:
+  - id: p-lab-collector-identity-metrics
+    name: lab-collector-identity-metrics
+  - id: p-lab-collector-identity-logs
+    name: lab-collector-identity-logs
+  - id: p-lab-tag-fields-infra
+    name: lab-tag-fields-infra

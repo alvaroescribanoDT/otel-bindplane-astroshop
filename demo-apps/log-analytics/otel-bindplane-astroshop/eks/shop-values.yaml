@@ -1,0 +1,29 @@
+# Astronomy Shop on EKS (chart opentelemetry-demo 0.42.6 / app 3.1.0) - logs-only use case.
+# Mirrors the EC2 shop (core + Kafka/accounting/fraud-detection layer): no GenAI components, no bundled
+# monitoring backends. Kafka must stay on: the chart's checkout pod has a wait-for-kafka init container. Nothing is exported to Dynatrace from here: the pods' stdout
+# logs are collected by the Bindplane node agent (see bindplane/50-otel-eks-logs.yaml).
+components:
+  agent:           {enabled: false}
+  chatbot:         {enabled: false}
+  mcp:             {enabled: false}
+  opamp-server:    {enabled: false}
+
+jaeger:     {enabled: false}
+prometheus: {enabled: false}
+grafana:    {enabled: false}
+opensearch: {enabled: false}
+
+opentelemetry-collector:
+  config:
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          exporters: [debug, span_metrics]
+        metrics:
+          receivers: [otlp, span_metrics, prometheus/ad]
+          exporters: [debug]
+        logs:
+          exporters: [debug]
+        profiles:
+          exporters: [debug]
