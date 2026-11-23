@@ -1,0 +1,80 @@
+# Lab overrides for opentelemetry-demo 3.1.0. Installed by the EC2 user data as /opt/opentelemetry-demo/compose.override.yaml
+
+x-lab-logging: &lab-logging
+  # json-file driver that embeds the compose service name in every log line (attrs),
+  # so the Bindplane agent can identify containers without depending on container IDs
+  driver: json-file
+  options:
+    labels: com.docker.compose.service
+    max-size: 5m
+    max-file: "2"
+
+services:
+  # 3.1.0 bug: the recommendation image has no `nc`, so the upstream healthcheck
+  # (`nc -z localhost 9001`) never passes and frontend-proxy (port 8080) never starts.
+  recommendation:
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9001'"]
+
+  # Stable localhost-only ports for the Bindplane agent (default is a random port on 0.0.0.0)
+  astronomy-db:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+    logging: *lab-logging
+    # Upstream runs pg_isready without a user, so it connects as "root" and Postgres logs
+    # FATAL: role "root" does not exist every 5 seconds. Fixed at the source instead of filtered in the collector.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+
+  valkey-cart:
+    ports: !override
+      - "127.0.0.1:6379:6379"
+    logging: *lab-logging
+
+  # Non-OTel-logging containers whose stdout the agent collects
+  flagd:
+    logging: *lab-logging
+
+  frontend-proxy:
+    logging: *lab-logging
+
+  # Kafka broker (compose.full.yaml) is not OTel-instrumented: collect its stdout too
+  kafka:
+    logging: *lab-logging
+
+  # The full layer's collector config binds its OTLP receiver to OTEL_COLLECTOR_HOST, which in this lab is the host's
+  # private IP (the Bindplane collector). Bind the shop's own contrib collector to 0.0.0.0 so it does not crash-loop.
+  otel-collector:
+    environment:
+      OTEL_COLLECTOR_HOST: 0.0.0.0
+    # Bindplane forwards logs here; this contrib collector writes them to OpenSearch (the Bindplane build has no opensearch exporter)
+    ports: !override
+      - "127.0.0.1:24317:4317"
+      - "127.0.0.1:24318:4318"
+
+  # ---- Observability layer (compose.observability.yaml): Jaeger, Prometheus, OpenSearch, Grafana ----
+  # Fed by the Bindplane collector on this host as extra destinations, so their ports are pinned to localhost.
+  jaeger:
+    ports: !override
+      - "127.0.0.1:14317:4317"
+      - "${JAEGER_UI_PORT}"
+
+  opensearch:
+    ports: !override
+      - "127.0.0.1:9200:9200"
+
+  prometheus:
+    ports: !override
+      - "127.0.0.1:9090:9090"
+    # upstream flags + the remote-write receiver, so Bindplane can push metrics to it
+    command: !override
+      - --web.console.templates=/etc/prometheus/consoles
+      - --web.console.libraries=/etc/prometheus/console_libraries
+      - --storage.tsdb.retention.time=7d
+      - --config.file=/etc/prometheus/prometheus-config.yaml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+      - --web.route-prefix=/
+      - --web.enable-otlp-receiver
+      - --enable-feature=exemplar-storage
+      - --web.enable-remote-write-receiver

@@ -1,0 +1,663 @@
+# Generated from the lab's live Bindplane export. Double-brace placeholders are filled by scripts/render.py from lab.env.
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-collector-identity-logs
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Logs
+  - name: logs_context
+    value: resource
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(attributes["service.name"], "{{SERVICE_PREFIX}}bindplane-collector")
+    - set(attributes["service.instance.id"], attributes["host.name"]) where attributes["host.name"] != nil
+  - name: conditions
+    value: []
+  - name: metrics_context
+    value: datapoint
+  - name: traces_context
+    value: span
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-collector-identity-metrics
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Metrics
+  - name: metrics_context
+    value: metric
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(resource.attributes["service.name"], "{{SERVICE_PREFIX}}bindplane-collector")
+    - set(resource.attributes["service.instance.id"], resource.attributes["host.name"]) where resource.attributes["host.name"] != nil
+    - set(metric.name, "otelcol_process_cpu_seconds") where metric.name == "otelcol_process_cpu"
+  - name: conditions
+    value: []
+  - name: logs_context
+    value: log
+  - name: traces_context
+    value: span
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-cumulative-to-delta
+spec:
+  type: cumulative_to_delta
+  parameters:
+  - name: include_metric_types
+    value:
+    - sum
+    - histogram
+    - exponentialhistogram
+  - name: max_staleness
+    value: 1h
+  - name: initial_value
+    value: drop
+  - name: include_metrics
+    value: []
+  - name: include_match_type
+    value: strict
+  - name: exclude_metrics
+    value: []
+  - name: exclude_match_type
+    value: strict
+  - name: exclude_metric_types
+    value: []
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-docker-group-by-container
+spec:
+  type: group_by_attributes
+  parameters:
+  - name: telemetry_types
+    value:
+    - Logs
+  - name: log_attributes
+    value:
+    - container.name
+  - name: metric_attributes
+    value: []
+  - name: trace_attributes
+    value: []
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-docker-json-logs
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Logs
+  - name: logs_context
+    value: log
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(cache, ParseJSON(body)) where IsString(body)
+    - set(attributes["container.name"], cache["attrs"]["com.docker.compose.service"]) where cache["attrs"] != nil
+    - set(attributes["log.iostream"], cache["stream"]) where cache["stream"] != nil
+    - set(body, cache["log"]) where cache["log"] != nil
+    - delete_key(attributes, "log.record.original")
+    - set(time, observed_time) where time_unix_nano == 0
+  - name: conditions
+    value: []
+  - name: metrics_context
+    value: datapoint
+  - name: traces_context
+    value: span
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-docker-service-name
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Logs
+  - name: logs_context
+    value: resource
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(attributes["service.name"], attributes["container.name"]) where attributes["container.name"] != nil
+  - name: conditions
+    value: []
+  - name: metrics_context
+    value: datapoint
+  - name: traces_context
+    value: span
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-drop-failed-flag-evals
+spec:
+  type: filter-by-condition
+  parameters:
+  - name: telemetry_types
+    value:
+    - Traces
+  - name: action
+    value: exclude
+  - name: condition
+    value:
+      ottl: resource.attributes["service.name"] == "flagd" and name == "resolveBoolean" and status.code == STATUS_CODE_ERROR and (attributes["feature_flag.key"] == "kafkaConsumerDead" or attributes["feature_flag.key"]
+        == "cartMetricCardinalityOverflow")
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-drop-unlabelled-docker-logs
+spec:
+  type: filter-by-condition
+  parameters:
+  - name: telemetry_types
+    value:
+    - Logs
+  - name: action
+    value: exclude
+  - name: condition
+    value:
+      ottl: attributes["container.name"] == nil
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-eks-service-name
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Logs
+  - name: logs_context
+    value: resource
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(attributes["service.name"], Concat(["{{EKS_SERVICE_PREFIX}}", attributes["k8s.container.name"]], "")) where attributes["k8s.container.name"] != nil and attributes["service.name"] == nil
+  - name: conditions
+    value: []
+  - name: metrics_context
+    value: datapoint
+  - name: traces_context
+    value: span
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-eks-tag-fields
+spec:
+  type: add_fields_v2
+  parameters:
+  - name: telemetry_types
+    value:
+    - Logs
+    - Metrics
+  - name: condition
+    value: ''
+  - name: fields
+    value:
+    - fieldAction: upsert
+      fieldType: resource
+      key: deployment.environment
+      value: {{EKS_DEPLOYMENT_ENV}}
+    - fieldAction: upsert
+      fieldType: resource
+      key: lab.processed_by
+      value: bindplane
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-envoy-access-severity
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Logs
+  - name: logs_context
+    value: log
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(severity_number, SEVERITY_NUMBER_INFO) where resource.attributes["service.name"] == "frontend-proxy" and IsMatch(body, "HTTP/[0-9.]+\" [0-9]+ ")
+    - set(severity_text, "INFO") where resource.attributes["service.name"] == "frontend-proxy" and IsMatch(body, "HTTP/[0-9.]+\" [0-9]+ ")
+    - set(severity_number, SEVERITY_NUMBER_WARN) where resource.attributes["service.name"] == "frontend-proxy" and IsMatch(body, "HTTP/[0-9.]+\" [0-9]+ ") and IsMatch(body, "HTTP/[0-9.]+\" (4[0-9]{2}|0)
+      ")
+    - set(severity_number, SEVERITY_NUMBER_ERROR) where resource.attributes["service.name"] == "frontend-proxy" and IsMatch(body, "HTTP/[0-9.]+\" [0-9]+ ") and IsMatch(body, "HTTP/[0-9.]+\" 5[0-9]{2} ")
+    - set(severity_text, "WARN") where resource.attributes["service.name"] == "frontend-proxy" and IsMatch(body, "HTTP/[0-9.]+\" [0-9]+ ") and severity_number == SEVERITY_NUMBER_WARN
+    - set(severity_text, "ERROR") where resource.attributes["service.name"] == "frontend-proxy" and IsMatch(body, "HTTP/[0-9.]+\" [0-9]+ ") and severity_number == SEVERITY_NUMBER_ERROR
+  - name: conditions
+    value: []
+  - name: metrics_context
+    value: datapoint
+  - name: traces_context
+    value: span
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-host-cumulative-to-delta
+spec:
+  type: cumulative_to_delta
+  parameters:
+  - name: include_metric_types
+    value:
+    - sum
+    - histogram
+    - exponentialhistogram
+  - name: max_staleness
+    value: 25h
+  - name: initial_value
+    value: auto
+  - name: include_metrics
+    value: []
+  - name: include_match_type
+    value: strict
+  - name: exclude_metrics
+    value: []
+  - name: exclude_match_type
+    value: strict
+  - name: exclude_metric_types
+    value: []
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-host-filter-delete
+spec:
+  type: custom
+  parameters:
+  - name: telemetry_types
+    value:
+    - Metrics
+  - name: configuration
+    value: "filter:\n  metric_conditions:\n    - resource.attributes[\"low-memory-process\"] != nil"
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-host-filter-idle
+spec:
+  type: custom
+  parameters:
+  - name: telemetry_types
+    value:
+    - Metrics
+  - name: configuration
+    value: "filter:\n  metrics:\n    datapoint:\n      - metric.name == \"system.cpu.utilization\" and attributes[\"state\"] == \"idle\""
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-host-detection-full
+spec:
+  type: custom
+  parameters:
+  - name: telemetry_types
+    value:
+    - Metrics
+    - Traces
+  - name: configuration
+    value: "resource_detection:\n  detectors: [\"system\"]\n  system:\n    resource_attributes:\n      host.arch:\n        enabled: true\n      host.id:\n        enabled: true\n      host.name:\n      \
+      \  enabled: true\n      host.ip:\n        enabled: true\n      host.interface:\n        enabled: true\n      host.mac:\n        enabled: true\n      host.cpu.model.name:\n        enabled: true\n \
+      \     host.cpu.vendor.id:\n        enabled: false\n      host.cpu.family:\n        enabled: false\n      host.cpu.model.id:\n        enabled: false\n      host.cpu.stepping:\n        enabled: false\n\
+      \      host.cpu.cache.l2.size:\n        enabled: false\n      os.type:\n        enabled: true\n      os.description:\n        enabled: true\n      os.name:\n        enabled: true\n      os.version:\n\
+      \        enabled: true\n      os.build.id:\n        enabled: true"
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-host-detection-light
+spec:
+  type: custom
+  parameters:
+  - name: telemetry_types
+    value:
+    - Logs
+    - Metrics
+  - name: configuration
+    value: "resource_detection:\n  detectors: [\"system\"]\n  system:\n    resource_attributes:\n      host.arch:\n        enabled: false\n      host.id:\n        enabled: true\n      host.name:\n     \
+      \   enabled: true\n      host.ip:\n        enabled: false\n      host.interface:\n        enabled: false\n      host.mac:\n        enabled: false\n      host.cpu.model.name:\n        enabled: false\n\
+      \      host.cpu.vendor.id:\n        enabled: false\n      host.cpu.family:\n        enabled: false\n      host.cpu.model.id:\n        enabled: false\n      host.cpu.stepping:\n        enabled: false\n\
+      \      host.cpu.cache.l2.size:\n        enabled: false\n      os.type:\n        enabled: false\n      os.description:\n        enabled: false\n      os.name:\n        enabled: false\n      os.version:\n\
+      \        enabled: false\n      os.build.id:\n        enabled: false"
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-host-transform
+spec:
+  type: custom
+  parameters:
+  - name: telemetry_types
+    value:
+    - Metrics
+  - name: configuration
+    value: "transform:\n  error_mode: ignore\n  metric_statements:\n    - context: datapoint\n      statements:\n        # Mark process metrics for deletion if the process uses less than 10 MiB of memory\
+      \ (value_int < 10485760 bytes).\n        # Adjust the threshold to your needs (e.g. 10485760 for 10 MiB).\n        # This filters out low-memory/insignificant processes to reduce cardinality.\n  \
+      \      - set(resource.attributes[\"low-memory-process\"], \"true\") where metric.name == \"process.memory.usage\" and value_int < 10485760 and resource.attributes[\"process.executable.name\"] != nil\n\
+      \n        # Allowlist: uncomment and add process executable names to always ingest regardless of memory usage.\n        # For regex pattern matching, use IsMatch() instead, e.g.: IsMatch(resource.attributes[\"\
+      process.executable.name\"], \"java.*\")\n        # - delete_key(resource.attributes, \"low-memory-process\") where ContainsValue([\"my-process\", \"another-process\"], resource.attributes[\"process.executable.name\"\
+      ])\n    - context: resource\n      statements:\n        # Replace spaces in process command line with underscores for cleaner entity IDs\n        - replace_pattern(resource.attributes[\"process.command_line\"\
+      ], \" \", \"_\")\n        # Convert host.ip from array to first value of array to avoid the metric being dropped\n        - set(resource.attributes[\"host.ip\"], resource.attributes[\"host.ip\"][0])\
+      \ where resource.attributes[\"host.ip\"] != nil\n\n    - context: datapoint\n      statements:\n        # For process.* metrics, keep only the attributes needed by the OpenTelemetry Host extension\
+      \ and remove the rest\n        - delete_key(resource.attributes, \"process.cgroup\") where IsMatch(metric.name, \"^process\\\\..*\")\n        - delete_key(resource.attributes, \"process.command\"\
+      ) where IsMatch(metric.name, \"^process\\\\..*\")\n        - delete_key(resource.attributes, \"process.executable.path\") where IsMatch(metric.name, \"^process\\\\..*\")\n        - delete_key(resource.attributes,\
+      \ \"process.owner\") where IsMatch(metric.name, \"^process\\\\..*\")\n        - delete_key(resource.attributes, \"process.parent_pid\") where IsMatch(metric.name, \"^process\\\\..*\")\n        - delete_key(resource.attributes,\
+      \ \"process.pid\") where IsMatch(metric.name, \"^process\\\\..*\")\n        - delete_key(resource.attributes, \"process.command_line\") where IsMatch(metric.name, \"^process\\\\..*\")\n        - delete_key(resource.attributes,\
+      \ \"process.command_args\") where IsMatch(metric.name, \"^process\\\\..*\")\n\n        # Delete empty device attributes\n        - delete_key(datapoint.attributes, \"device\") where datapoint.attributes[\"\
+      device\"] == \"\"\n\n        - delete_key(datapoint.attributes, \"protocol\") where IsMatch(metric.name, \"^system\\\\.network\\\\..*\")\n\n        # Filesystem metrics: Extension uses mountpoint\
+      \ and state, but not device, mode, or type\n        - delete_key(datapoint.attributes, \"device\") where IsMatch(metric.name, \"^system\\\\.filesystem\\\\..*\")\n        - delete_key(datapoint.attributes,\
+      \ \"mode\") where IsMatch(metric.name, \"^system\\\\.filesystem\\\\..*\")\n        - delete_key(datapoint.attributes, \"type\") where IsMatch(metric.name, \"^system\\\\.filesystem\\\\..*\")\n\n  \
+      \  - context: metric\n      statements:\n        # Sum non-idle state fractions into a single host-level utilization value\n        - aggregate_on_attributes(\"sum\", []) where metric.name == \"system.cpu.utilization\""
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-prefix-service-name-logs
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Logs
+  - name: logs_context
+    value: resource
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(attributes["service.name"], Concat(["{{SERVICE_PREFIX}}", attributes["service.name"]], "")) where attributes["service.name"] != nil and not IsMatch(attributes["service.name"], "^{{SERVICE_PREFIX}}")
+  - name: conditions
+    value: []
+  - name: metrics_context
+    value: datapoint
+  - name: traces_context
+    value: span
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-prefix-service-name-metrics
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Metrics
+  - name: metrics_context
+    value: resource
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(attributes["service.name"], Concat(["{{SERVICE_PREFIX}}", attributes["service.name"]], "")) where attributes["service.name"] != nil and not IsMatch(attributes["service.name"], "^{{SERVICE_PREFIX}}")
+  - name: conditions
+    value: []
+  - name: logs_context
+    value: log
+  - name: traces_context
+    value: span
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-prefix-service-name-traces
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Traces
+  - name: traces_context
+    value: resource
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(attributes["service.name"], Concat(["{{SERVICE_PREFIX}}", attributes["service.name"]], "")) where attributes["service.name"] != nil and not IsMatch(attributes["service.name"], "^{{SERVICE_PREFIX}}")
+  - name: conditions
+    value: []
+  - name: logs_context
+    value: log
+  - name: metrics_context
+    value: datapoint
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-redact-cvv
+spec:
+  type: redact_sensitive_data
+  parameters:
+  - name: telemetry_types
+    value:
+    - Traces
+    - Logs
+  - name: redaction_strategy
+    value: Censor with Asterisks
+  - name: redaction_rules
+    value: []
+  - name: redacted_keys
+    value:
+    - demo.payment.card_cvv
+  - name: redact_non_string_data
+    value: true
+  - name: custom_rules
+    value: []
+  - name: ignored_values
+    value: []
+  - name: ignored_keys
+    value: []
+  - name: hash_function
+    value: sha3
+  - name: added_summary_attributes
+    value: None
+  - name: delete_all_attributes
+    value: false
+  - name: allowed_keys
+    value: []
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-redact-pii
+spec:
+  type: redact_sensitive_data
+  parameters:
+  - name: telemetry_types
+    value:
+    - Traces
+    - Logs
+  - name: redaction_strategy
+    value: Hashing
+  - name: hash_function
+    value: sha3
+  - name: redaction_rules
+    value:
+    - Credit Card
+    - Email
+  - name: redact_non_string_data
+    value: true
+  - name: custom_rules
+    value: []
+  - name: ignored_values
+    value: []
+  - name: redacted_keys
+    value: []
+  - name: ignored_keys
+    value: []
+  - name: added_summary_attributes
+    value: None
+  - name: delete_all_attributes
+    value: false
+  - name: allowed_keys
+    value: []
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-s3-batch
+spec:
+  type: batch
+  parameters:
+  - name: send_batch_size
+    value: 8192
+  - name: send_batch_max_size
+    value: 0
+  - name: timeout
+    value: 10s
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-sample-envoy-ok
+spec:
+  type: sampling
+  parameters:
+  - name: condition
+    value:
+      ottl: resource.attributes["service.name"] == "frontend-proxy" and IsMatch(body, "HTTP/[0-9.]+\" [0-9]+ ") and IsMatch(body, "HTTP/[0-9.]+\" [23][0-9]{2} ")
+  - name: drop_ratio
+    value: '0.90'
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-sample-kafka-logs
+spec:
+  type: sampling
+  parameters:
+  - name: condition
+    value:
+      ottl: (attributes["container.name"] == "kafka" or resource.attributes["k8s.container.name"] == "kafka") and not IsMatch(body, "\\b(WARN|ERROR|FATAL)\\b")
+  - name: drop_ratio
+    value: '0.90'
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-severity-from-message
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Logs
+  - name: logs_context
+    value: log
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(severity_number, SEVERITY_NUMBER_INFO)
+    - set(severity_text, "INFO")
+    - set(severity_number, SEVERITY_NUMBER_WARN) where IsMatch(body, "(\\bWARN(ING)?\\b|^warn:|\\twarn\\t|level=warn|^[0-9]+:[A-Z] [^#*]{10,45}# )")
+    - set(severity_number, SEVERITY_NUMBER_ERROR) where IsMatch(body, "(\\b(ERROR|FATAL|SEVERE|PANIC|CRITICAL)\\b|^(fail|crit):|\\t(error|fatal|panic|dpanic)\\t|level=(error|fatal))")
+    - set(severity_text, "WARN") where severity_number == SEVERITY_NUMBER_WARN
+    - set(severity_text, "ERROR") where severity_number == SEVERITY_NUMBER_ERROR
+  - name: conditions
+    value: []
+  - name: metrics_context
+    value: datapoint
+  - name: traces_context
+    value: span
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-severity-journald
+spec:
+  type: transform
+  parameters:
+  - name: telemetry_type
+    value: Logs
+  - name: logs_context
+    value: log
+  - name: error_mode
+    value: ignore
+  - name: statements
+    value:
+    - set(severity_number, SEVERITY_NUMBER_INFO)
+    - set(severity_text, "INFO")
+    - set(severity_number, SEVERITY_NUMBER_WARN) where IsMap(body) and body["PRIORITY"] == "4"
+    - set(severity_number, SEVERITY_NUMBER_ERROR) where IsMap(body) and IsMatch(body["PRIORITY"], "^[0-3]$")
+    - set(severity_text, "WARN") where severity_number == SEVERITY_NUMBER_WARN
+    - set(severity_text, "ERROR") where severity_number == SEVERITY_NUMBER_ERROR
+  - name: conditions
+    value: []
+  - name: metrics_context
+    value: datapoint
+  - name: traces_context
+    value: span
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-tag-fields
+spec:
+  type: add_fields_v2
+  parameters:
+  - name: telemetry_types
+    value:
+    - Logs
+    - Metrics
+    - Traces
+  - name: condition
+    value: ''
+  - name: fields
+    value:
+    - fieldAction: upsert
+      fieldType: resource
+      key: deployment.environment
+      value: {{DEPLOYMENT_ENV}}
+    - fieldAction: upsert
+      fieldType: resource
+      key: service.namespace
+      value: {{LAB_NAME}}
+    - fieldAction: upsert
+      fieldType: resource
+      key: lab.processed_by
+      value: bindplane
+---
+apiVersion: bindplane.observiq.com/v1
+kind: Processor
+metadata:
+  name: lab-tag-fields-infra
+spec:
+  type: add_fields_v2
+  parameters:
+  - name: telemetry_types
+    value:
+    - Logs
+    - Metrics
+    - Traces
+  - name: condition
+    value: ''
+  - name: fields
+    value:
+    - fieldAction: upsert
+      fieldType: resource
+      key: deployment.environment
+      value: {{DEPLOYMENT_ENV}}
+    - fieldAction: upsert
+      fieldType: resource
+      key: lab.processed_by
+      value: bindplane

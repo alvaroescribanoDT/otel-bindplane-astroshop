@@ -1,0 +1,507 @@
+# Generated from the lab's live Bindplane export. Double-brace placeholders are filled by scripts/render.py from lab.env.
+---
+apiVersion: bindplane.observiq.com/v2
+kind: Configuration
+metadata:
+  name: otel-shop-agent
+  description: 'Single collector on the shop host: host, Postgres, Valkey, journald and Docker logs, plus the shop services'' OTLP, to Dynatrace (and Jaeger, Prometheus, OpenSearch, S3)'
+  labels:
+    agent-type: observiq-otel-collector
+    platform: linux
+spec:
+  contentType: ''
+  measurementInterval: ''
+  topologyInterval: ''
+  disableLegacyEnvVarNormalization: false
+  sources:
+  - id: s-hm-10s
+    displayName: Host metrics 10s (Dynatrace OTel host monitoring)
+    type: custom
+    parameters:
+    - name: telemetry_types
+      value:
+      - Metrics
+    - name: configuration
+      value: "host_metrics:\n  collection_interval: 10s\n  scrapers:\n    # CPU metrics\n    cpu:\n      metrics:\n        system.cpu.utilization:\n          enabled: true\n        system.cpu.time:\n  \
+        \        enabled: false\n        # Enabled by default upstream since hostmetricsreceiver v0.157.0; only wanted in the 1h stream.\n        system.cpu.logical.count:\n          enabled: false\n\n\
+        \    # Memory metrics\n    memory:\n      metrics:\n        system.memory.utilization:\n          enabled: true\n        system.memory.usage:\n          enabled: false\n\n    # Load average metrics\n\
+        \    load:\n      metrics:\n        system.cpu.load_average.1m:\n          enabled: true\n        system.cpu.load_average.5m:\n          enabled: false\n        system.cpu.load_average.15m:\n  \
+        \        enabled: false"
+    processors:
+    - id: p-Host-Metrics
+      name: Host-Metrics
+    routes:
+      metrics:
+      - id: '0'
+        components:
+        - destinations/d-dt
+  - id: s-hm-5m
+    displayName: Host metrics 5m
+    type: custom
+    parameters:
+    - name: telemetry_types
+      value:
+      - Metrics
+    - name: configuration
+      value: "host_metrics:\n  collection_interval: 5m\n  scrapers:\n    # CPU metrics\n    cpu:\n      metrics:\n        system.cpu.time:\n          enabled: true\n        # Enabled by default upstream\
+        \ since hostmetricsreceiver v0.157.0; only wanted in the 1h stream.\n        system.cpu.logical.count:\n          enabled: false\n\n    # Memory metrics\n    memory:\n      metrics:\n        system.memory.usage:\n\
+        \          enabled: true\n\n    # Paging/Swap metrics\n    paging:\n      metrics:\n        system.paging.usage:\n          enabled: true\n        system.paging.operations:\n          enabled: true\n\
+        \        system.paging.faults:\n          enabled: true\n\n    # Network metrics\n    network:\n      metrics:\n        system.network.io:\n          enabled: true\n        system.network.packets:\n\
+        \          enabled: true\n        system.network.errors:\n          enabled: true\n        system.network.connections:\n          enabled: true\n        system.network.dropped:\n          enabled:\
+        \ true\n\n    # Load average metrics\n    load:\n      metrics:\n        system.cpu.load_average.1m:\n          enabled: false\n        system.cpu.load_average.5m:\n          enabled: true\n   \
+        \     system.cpu.load_average.15m:\n          enabled: true\n\n    # Disk metrics\n    disk:\n      metrics:\n        system.disk.io:\n          enabled: true\n        system.disk.operations:\n\
+        \          enabled: true\n        system.disk.io_time:\n          enabled: true\n        system.disk.operation_time:\n          enabled: true\n        system.disk.pending_operations:\n         \
+        \ enabled: false\n        system.disk.merged:\n          enabled: false\n        system.disk.weighted_io_time:\n          enabled: false\n\n    # Filesystem metrics\n    filesystem:\n      metrics:\n\
+        \        system.filesystem.usage:\n          enabled: true\n        system.filesystem.utilization:\n          enabled: true\n        system.filesystem.inodes.usage:\n          enabled: true\n\n\
+        \    # Process count metrics\n    processes:\n      metrics:\n        system.processes.count:\n          enabled: true\n        system.processes.created:\n          enabled: true\n\n    # Per-process\
+        \ metrics\n    process:\n      mute_process_all_errors: true\n      metrics:\n        process.cpu.utilization:\n          enabled: true\n        process.cpu.time:\n          enabled: true\n    \
+        \    process.memory.usage:\n          enabled: true\n        process.memory.virtual:\n          enabled: true\n        process.disk.io:\n          enabled: true"
+    processors:
+    - id: p-Host-Metrics
+      name: Host-Metrics
+    routes:
+      metrics:
+      - id: '0'
+        components:
+        - destinations/d-dt
+  - id: s-hm-1h
+    displayName: Host metrics 1h
+    type: custom
+    parameters:
+    - name: telemetry_types
+      value:
+      - Metrics
+    - name: configuration
+      value: "host_metrics:\n  collection_interval: 1h\n  scrapers:\n    # Memory metrics\n    memory:\n      metrics:\n        system.memory.limit:\n          enabled: true\n        system.memory.usage:\n\
+        \          enabled: false\n\n    # CPU metrics\n    cpu:\n      metrics:\n        system.cpu.logical.count:\n          enabled: true\n        system.cpu.physical.count:\n          enabled: true\n\
+        \        system.cpu.time:\n          enabled: false\n\n    # System metrics\n    system:\n      metrics:\n        system.uptime:\n          enabled: true"
+    processors:
+    - id: p-Host-Metrics
+      name: Host-Metrics
+    routes:
+      metrics:
+      - id: '0'
+        components:
+        - destinations/d-dt
+  - id: s-journald
+    displayName: Host journald logs
+    type: custom
+    parameters:
+    - name: telemetry_types
+      value:
+      - Logs
+    - name: configuration
+      value: "journald:\n  directory: /var/log/journal   # reference uses /run/log/journal; this Ubuntu image keeps a persistent journal\n  priority: info\n  start_at: end\n  operators:\n    # Move (rename)\
+        \ _PID to pid\n    - type: move\n      on_error: send_quiet   # entries without this field (kernel, systemd) pass through\n      from: body._PID\n      to: body.pid\n\n    # You can rename multiple\
+        \ fields at once\n    - type: move\n      on_error: send_quiet   # entries without this field (kernel, systemd) pass through\n      from: body._EXE\n      to: attributes[\"process.executable.name\"\
+        ]\n\n    # Optional: move MESSAGE to a differently named field\n    - type: move\n      on_error: send_quiet   # entries without this field (kernel, systemd) pass through\n      from: body.MESSAGE\n\
+        \      to: body.message"
+    processors:
+    - id: p-lab-severity-journald
+      name: lab-severity-journald
+    - id: p-lab-host-detection-light
+      name: lab-host-detection-light
+    - id: p-lab-tag-fields-infra
+      name: lab-tag-fields-infra
+    routes:
+      logs:
+      - id: '0'
+        components:
+        - destinations/d-dt
+        - destinations/d-otelcol
+        - destinations/d-s3
+  - id: s-postgres
+    displayName: astronomy-db (Postgres)
+    type: postgresql
+    parameters:
+    - name: telemetry_types
+      value:
+      - Metrics
+    - name: endpoint
+      value: 127.0.0.1:5432
+    - name: transport
+      value: tcp
+    - name: username
+      value: monitoring_user
+    - name: password
+      value: ${env:POSTGRES_MONITORING_PASSWORD}
+    - name: enable_tls
+      value: false
+    - name: collection_interval
+      value: 60
+    - name: postgresql_log_path
+      value:
+      - /var/log/postgresql/postgresql*.log
+      - /var/lib/pgsql/data/log/postgresql*.log
+      - /var/lib/pgsql/*/data/log/postgresql*.log
+    - name: start_at
+      value: end
+    - name: parse
+      value: true
+    - name: databases
+      value: []
+    - name: ca_file
+      value: ''
+    - name: cert_file
+      value: ''
+    - name: key_file
+      value: ''
+    - name: insecure_skip_verify
+      value: false
+    - name: disable_metrics
+      value: []
+    - name: timeout
+      value: 0
+    processors:
+    - id: p-lab-host-detection-light
+      name: lab-host-detection-light
+    - id: p-lab-tag-fields-infra
+      name: lab-tag-fields-infra
+    routes:
+      metrics:
+      - id: '0'
+        components:
+        - destinations/d-dt
+        - destinations/d-prometheus
+  - id: s-valkey
+    displayName: valkey-cart (Valkey, Redis protocol)
+    type: redis
+    parameters:
+    - name: telemetry_types
+      value:
+      - Metrics
+    - name: endpoint
+      value: 127.0.0.1:6379
+    - name: transport
+      value: tcp
+    - name: collection_interval
+      value: 60
+    - name: file_path
+      value:
+      - /var/log/redis/redis-server.log
+      - /var/log/redis_6379.log
+      - /var/log/redis/redis.log
+      - /var/log/redis/default.log
+      - /var/log/redis/redis_6379.log
+    - name: start_at
+      value: end
+    - name: parse
+      value: true
+    - name: disable_metrics
+      value:
+      - redis.cmd.calls
+      - redis.cmd.usec
+      - redis.maxmemory
+      - redis.replication.offset
+      - redis.role
+    - name: password
+      value: ''
+      sensitive: true
+    - name: enable_tls
+      value: false
+    - name: insecure_skip_verify
+      value: false
+    - name: ca_file
+      value: ''
+    - name: cert_file
+      value: ''
+    - name: key_file
+      value: ''
+    processors:
+    - id: p-lab-host-detection-light
+      name: lab-host-detection-light
+    - id: p-lab-tag-fields-infra
+      name: lab-tag-fields-infra
+    routes:
+      metrics:
+      - id: '0'
+        components:
+        - destinations/d-dt
+        - destinations/d-prometheus
+  - id: s-docker-logs
+    displayName: Docker logs (flagd, frontend-proxy, astronomy-db, valkey-cart)
+    type: file_v2
+    parameters:
+    - name: file_path
+      value:
+      - /var/lib/docker/containers/*/*-json.log
+    - name: start_at
+      value: end
+    - name: exclude_file_path
+      value: []
+    - name: log_type
+      value: file
+    - name: multiline_parsing
+      value: none
+    - name: multiline_line_start_pattern
+      value: ''
+    - name: multiline_line_end_pattern
+      value: ''
+    - name: include_file_name_attribute
+      value: true
+    - name: include_file_path_attribute
+      value: false
+    - name: include_file_name_resolved_attribute
+      value: false
+    - name: include_file_path_resolved_attribute
+      value: false
+    - name: delete_after_read
+      value: false
+    - name: encoding
+      value: utf-8
+    - name: compression
+      value: none
+    - name: poll_interval
+      value: 200
+    - name: force_flush_period
+      value: 500ms
+    - name: max_log_size
+      value: 1MiB
+    - name: max_concurrent_files
+      value: 1024
+    - name: fingerprint_size
+      value: 1kb
+    - name: enable_offset_storage
+      value: true
+    - name: offset_storage_dir
+      value: storage
+    - name: retry_on_failure_enabled
+      value: false
+    - name: retry_on_failure_initial_interval
+      value: 1
+    - name: retry_on_failure_max_interval
+      value: 30
+    - name: retry_on_failure_max_elapsed_time
+      value: 300
+    - name: exclude_older_than
+      value: ''
+    - name: enable_sorting
+      value: false
+    - name: sorting_method
+      value: regex
+    - name: top_n
+      value: 5
+    - name: sort_rules
+      value: []
+    processors:
+    - id: p-Docker-Logs
+      name: Docker-Logs
+    routes:
+      logs:
+      - id: '0'
+        components:
+        - destinations/d-dt
+        - destinations/d-otelcol
+        - destinations/d-s3
+  - id: s-otlp
+    displayName: Shop services OTLP (replaces the gateway collector)
+    type: otlp
+    parameters:
+    - name: telemetry_types
+      value:
+      - Logs
+      - Metrics
+      - Traces
+    - name: listen_address
+      value: 0.0.0.0
+    - name: grpc_port
+      value: 4317
+    - name: http_port
+      value: 4318
+    - name: transport
+      value: tcp
+    - name: unix_socket_path
+      value: ''
+    - name: grpc_max_recv_msg_size_mib
+      value: 20
+    - name: enable_tls
+      value: false
+    - name: cert_file
+      value: ''
+    - name: key_file
+      value: ''
+    - name: mutual_tls
+      value: false
+    - name: ca_file
+      value: ''
+    - name: enable_grpc_timeout
+      value: true
+    - name: grpc_max_connection_idle
+      value: 60
+    - name: grpc_max_connection_age
+      value: 60
+    - name: grpc_max_connection_age_grace
+      value: 300
+    - name: grpc_keepalive_min_time
+      value: 300
+    - name: grpc_keepalive_permit_without_stream
+      value: false
+    - name: include_metadata
+      value: false
+    - name: enable_cors
+      value: false
+    - name: cors_allowed_origins
+      value: []
+    - name: cors_allowed_headers
+      value: []
+    - name: cors_max_age
+      value: 0
+    processors:
+    - id: s-otlp-flagfilter
+      name: lab-drop-failed-flag-evals
+    - id: s-otlp-delete-empty-values
+      displayName: Delete Empty Values
+      type: delete_empty_values
+      parameters:
+      - name: telemetry_types
+        value:
+        - Logs
+        - Metrics
+        - Traces
+      - name: deleted_values
+        value:
+        - Null Values
+        - Empty Lists
+        - Empty Maps
+      - name: exclude_resource_keys
+        value: []
+      - name: exclude_attribute_keys
+        value: []
+      - name: exclude_body_keys
+        value: []
+      - name: empty_string_values
+        value:
+        - ''
+        - '-'
+        - ' '
+        - "\t"
+        - ''
+    - id: s-otlp-x0-logs
+      name: lab-host-detection-light
+    - id: p-Redact-PII
+      name: Redact-PII
+    - id: s-otlp-envoy-sample
+      name: lab-sample-envoy-ok
+    - id: s-otlp-envoy-sev
+      name: lab-envoy-access-severity
+    - id: s-otlp-x0-mt
+      name: lab-host-detection-full
+    - id: p-Lab-tags
+      name: Lab-tags
+    routes:
+      logs:
+      - id: '0'
+        components:
+        - destinations/d-dt
+        - destinations/d-s3
+      metrics:
+      - id: '0'
+        components:
+        - destinations/d-dt
+        - destinations/d-prometheus
+      traces:
+      - id: '0'
+        components:
+        - destinations/d-dt
+        - destinations/d-jaeger
+  - id: s-selfmon
+    displayName: Collector self-monitoring
+    type: bindplane-agent_v2
+    parameters:
+    - name: telemetry_types
+      value:
+      - Metrics
+      - Logs
+    - name: metrics_port
+      value: 8888
+    - name: trim_metric_suffixes
+      value: true
+    - name: collection_interval
+      value: 60
+    - name: log_path
+      value: log/collector.log
+    - name: updater_log_path
+      value: log/updater.log
+    - name: enable_stderr_log
+      value: true
+    - name: stderr_log_path_windows
+      value: log/observiq_collector.err
+    - name: stderr_log_path_macos
+      value: /var/log/observiq_collector.err
+    - name: multiline_parsing
+      value: none
+    - name: multiline_line_start_pattern
+      value: ''
+    - name: multiline_line_end_pattern
+      value: ''
+    - name: include_file_name_attribute
+      value: true
+    - name: include_file_path_attribute
+      value: false
+    - name: include_file_name_resolved_attribute
+      value: false
+    - name: include_file_path_resolved_attribute
+      value: false
+    - name: encoding
+      value: utf-8
+    - name: max_log_size
+      value: 1MiB
+    - name: enable_offset_storage
+      value: true
+    - name: offset_storage_dir
+      value: storage
+    - name: start_at
+      value: end
+    - name: metric_filtering
+      value:
+      - http_server_request_duration
+      - http_server_request_body_size
+      - http_server_response_body_size
+      - http_client_request_duration
+      - http_client_request_body_size
+      - rpc_server_call_duration
+      - rpc_client_call_duration
+      - otelcol_receiver_produced_size
+      - otelcol_processor_consumed_size
+      - otelcol_processor_produced_size
+      - otelcol_exporter_consumed_size
+      - otelcol_connector_consumed_size
+      - otelcol_connector_produced_size
+      - up
+      - scrape_duration_seconds
+      - scrape_samples_post_metric_relabeling
+      - scrape_samples_scraped
+      - scrape_series_added
+      - promhttp_metric_handler_errors_total
+    processors:
+    - id: p-Collector-Self-Monitoring
+      name: Collector-Self-Monitoring
+    routes:
+      logs:
+      - id: '0'
+        components:
+        - destinations/d-dt
+      metrics:
+      - id: '0'
+        components:
+        - destinations/d-dt
+  destinations:
+  - id: d-dt
+    name: dynatrace
+    processors:
+    - id: d-dt-delta
+      name: lab-cumulative-to-delta
+  - id: d-jaeger
+    name: shop-jaeger
+  - id: d-prometheus
+    name: shop-prometheus
+  - id: d-otelcol
+    name: shop-otelcol-to-opensearch
+  - id: d-s3
+    name: shop-s3-archive
+    processors:
+    - id: d-s3-batch
+      name: lab-s3-batch
+  selector:
+    matchLabels:
+      configuration: otel-shop-agent
